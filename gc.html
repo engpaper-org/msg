@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Team Console</title>
 <meta name="color-scheme" content="light" />
 <style>
@@ -118,20 +118,17 @@
 </div>
 
 <script>
-/* === CONFIG: your Worker API base === */
-const API_BASE = "https://msg.depoxtxyz.workers.dev"; // <- your Worker URL
+/* ===== CONFIG: your Worker base (token-auth version) ===== */
+const API_BASE = "https://msg.depoxtxyz.workers.dev";
 
-/* If you see CORS errors in console, make sure your Worker sends:
-   Access-Control-Allow-Origin: <the HTTPS origin where this file is hosted>
-   Access-Control-Allow-Credentials: true
-   and responds to OPTIONS preflights. */
-
-const $ = sel => document.querySelector(sel);
-
-let currentUser = null;
+/* ===== State ===== */
+let TOKEN = localStorage.getItem("token") || null;
+let CURRENT_USER = localStorage.getItem("user") || null;
 let es = null;
 let lastReceivedTs = 0;
 
+/* ===== DOM ===== */
+const $ = s => document.querySelector(s);
 const userHead = $("#userHead");
 const panelTitle = $("#panelTitle");
 const authBox = $("#authBox");
@@ -147,27 +144,35 @@ const toggleLogin = $("#toggleLogin");
 const toggleSignup = $("#toggleSignup");
 const logoutBtn = $("#logoutBtn");
 
+/* ===== UI switches ===== */
 toggleLogin.onclick = () => { loginForm.classList.remove("hidden"); signupForm.classList.add("hidden"); toggleSignup.classList.remove("ghost"); toggleLogin.classList.add("ghost"); }
 toggleSignup.onclick = () => { signupForm.classList.remove("hidden"); loginForm.classList.add("hidden"); toggleLogin.classList.remove("ghost"); toggleSignup.classList.add("ghost"); }
 
+/* ===== Notifications ===== */
 if ("Notification" in window && Notification.permission === "default") {
   Notification.requestPermission().catch(()=>{});
 }
 
+/* ===== Init ===== */
 init();
 
 async function init(){
-  try{
-    const me = await fetch(API_BASE + "/me", { credentials: "include" }).then(r=>r.json());
-    if (me.user) onLoggedIn(me.user); else showAuth();
-  }catch(e){
-    showAuth();
-    showCorsHint(e);
+  if (TOKEN) {
+    const me = await fetchJSON(`${API_BASE}/me?token=${encodeURIComponent(TOKEN)}`).catch(()=>({}));
+    if (me && me.tokenValid && CURRENT_USER) {
+      onLoggedIn(CURRENT_USER, TOKEN);
+      return;
+    } else {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      TOKEN = null; CURRENT_USER = null;
+    }
   }
+  showAuth();
 }
 
 function showAuth(){
-  currentUser = null;
+  CURRENT_USER = null;
   userHead.innerHTML = "";
   panelTitle.textContent = "Access";
   authBox.classList.remove("hidden");
@@ -176,25 +181,29 @@ function showAuth(){
   closeStream();
 }
 
+/* ===== Auth handlers ===== */
 loginForm.onsubmit = async (e) => {
   e.preventDefault();
   loginStatus.textContent = "Checking…";
   loginStatus.className = "status";
   const data = Object.fromEntries(new FormData(loginForm).entries());
   try{
-    const r = await fetch(API_BASE + "/login", {
+    const r = await fetch(`${API_BASE}/login`, {
       method:"POST", headers:{ "content-type":"application/json" },
-      credentials:"include", body: JSON.stringify(data)
+      body: JSON.stringify(data)
     });
     const j = await r.json().catch(()=>({}));
-    if (!r.ok || !j.ok) throw new Error(j.error || `Login failed (${r.status})`);
+    if (!r.ok || !j.ok || !j.token) throw new Error(j.error || `Login failed (${r.status})`);
+    TOKEN = j.token;
+    CURRENT_USER = j.user;
+    localStorage.setItem("token", TOKEN);
+    localStorage.setItem("user", CURRENT_USER);
     loginStatus.textContent = "Success.";
     loginStatus.className = "status ok";
-    onLoggedIn(j.user);
+    onLoggedIn(j.user, j.token);
   }catch(err){
     loginStatus.textContent = err.message;
     loginStatus.className = "status err";
-    showCorsHint(err);
   }
 };
 
@@ -204,7 +213,7 @@ signupForm.onsubmit = async (e) => {
   signupStatus.className = "status";
   const data = Object.fromEntries(new FormData(signupForm).entries());
   try{
-    const r = await fetch(API_BASE + "/signup", {
+    const r = await fetch(`${API_BASE}/signup`, {
       method:"POST", headers:{ "content-type":"application/json" },
       body: JSON.stringify(data)
     });
@@ -216,17 +225,29 @@ signupForm.onsubmit = async (e) => {
   }catch(err){
     signupStatus.textContent = err.message;
     signupStatus.className = "status err";
-    showCorsHint(err);
   }
 };
 
 logoutBtn.onclick = async () => {
-  try{ await fetch(API_BASE + "/logout", { method:"POST", credentials:"include" }); }catch{}
-  showAuth();
+  try{
+    if (TOKEN) {
+      await fetch(`${API_BASE}/logout`, {
+        method:"POST",
+        headers: TOKEN ? { "Authorization": "Bearer " + TOKEN } : {}
+      }).catch(()=>{});
+    }
+  }finally{
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    TOKEN = null; CURRENT_USER = null;
+    showAuth();
+  }
 };
 
-function onLoggedIn(username){
-  currentUser = username;
+/* ===== Logged-in UI ===== */
+function onLoggedIn(username, token){
+  CURRENT_USER = username;
+  TOKEN = token;
   const pfp = username.slice(0,1).toUpperCase();
   userHead.innerHTML = `<div class="pfp">${pfp}</div><div><div>${escapeHTML(username)}</div><div class="muted">Operator</div></div>`;
   panelTitle.textContent = "Session";
@@ -236,12 +257,11 @@ function onLoggedIn(username){
   openStream();
 }
 
+/* ===== SSE (token in query) ===== */
 function openStream(){
   closeStream();
   lastReceivedTs = 0;
-
-  // With credentials on cross-origin SSE requires CORS support on server.
-  es = new EventSource(API_BASE + "/events", { withCredentials: true });
+  es = new EventSource(`${API_BASE}/events?token=${encodeURIComponent(TOKEN)}`);
 
   es.onmessage = (ev) => {
     let data = {};
@@ -259,7 +279,6 @@ function openStream(){
       lastReceivedTs = data.message.ts;
     }
   };
-
   es.onerror = () => {
     liveStatus.textContent = "Reconnecting…";
     liveStatus.className = "status err";
@@ -269,29 +288,36 @@ function openStream(){
     liveStatus.className = "status ok";
   };
 }
-
 function closeStream(){
   if (es) { es.close(); es = null; }
 }
 
-document.querySelector("#composer").onsubmit = async (e) => {
+/* ===== Send message (Bearer) ===== */
+$("#composer").onsubmit = async (e) => {
   e.preventDefault();
   const input = $("#text");
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
   try{
-    const r = await fetch(API_BASE + "/send", {
-      method:"POST", headers:{ "content-type":"application/json" },
-      credentials:"include",
+    const r = await fetch(`${API_BASE}/send`, {
+      method:"POST",
+      headers:{
+        "content-type":"application/json",
+        "Authorization": "Bearer " + TOKEN
+      },
       body: JSON.stringify({ text })
     });
-    if (!r.ok) throw new Error(`Send failed (${r.status})`);
+    if (!r.ok) {
+      const j = await r.json().catch(()=>null);
+      throw new Error(j?.error || `Send failed (${r.status})`);
+    }
   }catch(err){
-    alert("Failed to send. Check network/CORS.");
+    alert("Failed to send: " + err.message);
   }
 };
 
+/* ===== Render helpers ===== */
 function renderMsg(m){
   const el = document.createElement("div");
   el.className = "msg";
@@ -317,20 +343,10 @@ function maybeNotify(idleMs){
   }
 }
 
-/* small utils */
+/* ===== Small utils ===== */
+async function fetchJSON(url, opts){ const r = await fetch(url, opts||{}); return r.json(); }
 function escapeHTML(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function linkify(s){ return s.replace(/https?:\/\/[^\s]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`); }
-
-/* Show a friendly hint if it looks like a CORS issue */
-function showCorsHint(err){
-  const isCors = (err && (""+err).includes("TypeError")) || location.protocol === "file:";
-  if (!isCors) return;
-  const t = document.createElement("div");
-  t.className = "notice";
-  t.style.marginTop = "10px";
-  t.textContent = "If you see CORS errors: host this file on HTTPS and allow its origin in your Worker (Access-Control-Allow-Origin + Credentials). 'file://' won’t work.";
-  document.querySelector("#authBox").appendChild(t);
-}
 </script>
 </body>
 </html>
