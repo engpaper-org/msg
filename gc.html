@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Team Console</title>
+<meta name="color-scheme" content="light" />
+<style>
+  :root{
+    --bg:#f6f8fb; --panel:rgba(255,255,255,.75); --border:rgba(17,24,39,.08);
+    --fg:#0e1320; --muted:#5b6a86; --brand:#2563eb; --ok:#16a34a; --err:#ef4444;
+    --ring:rgba(37,99,235,.22);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100svh; display:grid; place-items:center;
+    background:linear-gradient(180deg,#ffffff 0%, #eef2f9 100%);
+    color:var(--fg); font:14px/1.5 Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;
+  }
+  .card{
+    width:min(1040px,100% - 24px);
+    background:var(--panel); backdrop-filter:blur(12px) saturate(120%);
+    border:1px solid var(--border); border-radius:20px; overflow:hidden;
+    box-shadow:0 12px 40px rgba(31,41,55,.12);
+  }
+  .head{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.5)}
+  .head h1{margin:0;font-size:16px;font-weight:700;letter-spacing:.2px}
+  .head .user{display:flex;gap:10px;align-items:center}
+  .pfp{width:30px;height:30px;border-radius:50%;background:#e8eefc;display:grid;place-items:center;font-weight:700;color:#1d4ed8}
+  .muted{color:var(--muted)}
+  .inner{display:grid;grid-template-columns:340px 1fr;min-height:560px}
+  .panel{padding:18px;border-right:1px solid var(--border);background:rgba(255,255,255,.55)}
+  .panel h2{margin:0 0 12px;font-size:14px;color:var(--muted);font-weight:700}
+  .field{display:grid;gap:6px;margin:10px 0}
+  .field label{font-size:12px;color:var(--muted)}
+  .field input{
+    padding:11px 12px;border-radius:12px;background:#fff;border:1px solid var(--border);color:var(--fg);outline:none
+  }
+  .field input:focus{border-color:var(--brand);box-shadow:0 0 0 4px var(--ring)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  button{border:0;background:var(--brand);color:white;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
+  button.ghost{background:#ecf2ff;color:#1d4ed8}
+  .sep{height:1px;background:var(--border);margin:14px 0}
+  .status{min-height:18px;font-size:12px}
+  .status.err{color:var(--err)}
+  .status.ok{color:var(--ok)}
+  .notice{padding:8px 12px;background:#fff;border:1px dashed var(--border);border-radius:10px;color:var(--muted);font-size:12px}
+  .hidden{display:none!important}
+
+  /* chat */
+  .chat{display:flex;flex-direction:column;height:100%;background:rgba(255,255,255,.55)}
+  .msgs{flex:1;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:10px}
+  .msg{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start}
+  .bubble{background:#fff;border:1px solid var(--border);border-radius:14px;padding:10px 12px}
+  .meta{font-size:11px;color:var(--muted);margin-bottom:4px}
+  .composer{display:flex;gap:8px;padding:14px;border-top:1px solid var(--border);background:rgba(255,255,255,.6)}
+  .composer input{flex:1}
+
+  @media (max-width:900px){
+    .inner{grid-template-columns:1fr}
+    .panel{border-right:0;border-bottom:1px solid var(--border)}
+  }
+</style>
+</head>
+<body>
+<div class="card" id="app">
+  <div class="head">
+    <h1>Team Console</h1>
+    <div class="user" id="userHead"></div>
+  </div>
+
+  <div class="inner">
+    <!-- Left panel: auth/controls -->
+    <div class="panel">
+      <h2 id="panelTitle">Access</h2>
+
+      <div id="authBox">
+        <div class="row" style="gap:10px">
+          <button id="toggleLogin" class="ghost">Log in</button>
+          <button id="toggleSignup">Sign up</button>
+        </div>
+
+        <div class="sep"></div>
+
+        <form id="loginForm">
+          <div class="field"><label>Username</label><input name="username" autocomplete="username" required></div>
+          <div class="field"><label>Password</label><input name="password" type="password" autocomplete="current-password" required></div>
+          <div class="row"><button type="submit">Enter</button><span class="status" id="loginStatus"></span></div>
+        </form>
+
+        <form id="signupForm" class="hidden">
+          <div class="field"><label>Username</label><input name="username" autocomplete="username" required></div>
+          <div class="field"><label>Password</label><input name="password" type="password" autocomplete="new-password" required></div>
+          <div class="field"><label>Authorization code</label><input name="code" type="password" required></div>
+          <div class="row"><button type="submit">Create</button><span class="status" id="signupStatus"></span></div>
+        </form>
+      </div>
+
+      <div id="controlsBox" class="hidden">
+        <div class="notice">This console shows system activity in real time. Keep it confidential.</div>
+        <div class="sep"></div>
+        <div class="row">
+          <button id="logoutBtn" class="ghost">Sign out</button>
+          <span class="status ok" id="liveStatus">Connected</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: chat -->
+    <div class="chat">
+      <div class="msgs" id="msgs"></div>
+      <form class="composer hidden" id="composer">
+        <input id="text" maxlength="2000" placeholder="Type an update…"/>
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+/* === CONFIG: your Worker API base === */
+const API_BASE = "https://msg.depoxtxyz.workers.dev"; // <- your Worker URL
+
+/* If you see CORS errors in console, make sure your Worker sends:
+   Access-Control-Allow-Origin: <the HTTPS origin where this file is hosted>
+   Access-Control-Allow-Credentials: true
+   and responds to OPTIONS preflights. */
+
+const $ = sel => document.querySelector(sel);
+
+let currentUser = null;
+let es = null;
+let lastReceivedTs = 0;
+
+const userHead = $("#userHead");
+const panelTitle = $("#panelTitle");
+const authBox = $("#authBox");
+const controlsBox = $("#controlsBox");
+const composer = $("#composer");
+const msgsEl = $("#msgs");
+const loginForm = $("#loginForm");
+const signupForm = $("#signupForm");
+const loginStatus = $("#loginStatus");
+const signupStatus = $("#signupStatus");
+const liveStatus = $("#liveStatus");
+const toggleLogin = $("#toggleLogin");
+const toggleSignup = $("#toggleSignup");
+const logoutBtn = $("#logoutBtn");
+
+toggleLogin.onclick = () => { loginForm.classList.remove("hidden"); signupForm.classList.add("hidden"); toggleSignup.classList.remove("ghost"); toggleLogin.classList.add("ghost"); }
+toggleSignup.onclick = () => { signupForm.classList.remove("hidden"); loginForm.classList.add("hidden"); toggleLogin.classList.remove("ghost"); toggleSignup.classList.add("ghost"); }
+
+if ("Notification" in window && Notification.permission === "default") {
+  Notification.requestPermission().catch(()=>{});
+}
+
+init();
+
+async function init(){
+  try{
+    const me = await fetch(API_BASE + "/me", { credentials: "include" }).then(r=>r.json());
+    if (me.user) onLoggedIn(me.user); else showAuth();
+  }catch(e){
+    showAuth();
+    showCorsHint(e);
+  }
+}
+
+function showAuth(){
+  currentUser = null;
+  userHead.innerHTML = "";
+  panelTitle.textContent = "Access";
+  authBox.classList.remove("hidden");
+  controlsBox.classList.add("hidden");
+  composer.classList.add("hidden");
+  closeStream();
+}
+
+loginForm.onsubmit = async (e) => {
+  e.preventDefault();
+  loginStatus.textContent = "Checking…";
+  loginStatus.className = "status";
+  const data = Object.fromEntries(new FormData(loginForm).entries());
+  try{
+    const r = await fetch(API_BASE + "/login", {
+      method:"POST", headers:{ "content-type":"application/json" },
+      credentials:"include", body: JSON.stringify(data)
+    });
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || `Login failed (${r.status})`);
+    loginStatus.textContent = "Success.";
+    loginStatus.className = "status ok";
+    onLoggedIn(j.user);
+  }catch(err){
+    loginStatus.textContent = err.message;
+    loginStatus.className = "status err";
+    showCorsHint(err);
+  }
+};
+
+signupForm.onsubmit = async (e) => {
+  e.preventDefault();
+  signupStatus.textContent = "Creating…";
+  signupStatus.className = "status";
+  const data = Object.fromEntries(new FormData(signupForm).entries());
+  try{
+    const r = await fetch(API_BASE + "/signup", {
+      method:"POST", headers:{ "content-type":"application/json" },
+      body: JSON.stringify(data)
+    });
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || `Signup failed (${r.status})`);
+    signupStatus.textContent = "Account created. You can log in.";
+    signupStatus.className = "status ok";
+    toggleLogin.click();
+  }catch(err){
+    signupStatus.textContent = err.message;
+    signupStatus.className = "status err";
+    showCorsHint(err);
+  }
+};
+
+logoutBtn.onclick = async () => {
+  try{ await fetch(API_BASE + "/logout", { method:"POST", credentials:"include" }); }catch{}
+  showAuth();
+};
+
+function onLoggedIn(username){
+  currentUser = username;
+  const pfp = username.slice(0,1).toUpperCase();
+  userHead.innerHTML = `<div class="pfp">${pfp}</div><div><div>${escapeHTML(username)}</div><div class="muted">Operator</div></div>`;
+  panelTitle.textContent = "Session";
+  authBox.classList.add("hidden");
+  controlsBox.classList.remove("hidden");
+  composer.classList.remove("hidden");
+  openStream();
+}
+
+function openStream(){
+  closeStream();
+  lastReceivedTs = 0;
+
+  // With credentials on cross-origin SSE requires CORS support on server.
+  es = new EventSource(API_BASE + "/events", { withCredentials: true });
+
+  es.onmessage = (ev) => {
+    let data = {};
+    try { data = JSON.parse(ev.data); } catch{}
+    if (data.type === "init") {
+      msgsEl.innerHTML = "";
+      data.messages.forEach(renderMsg);
+      scrollBottom();
+      if (data.messages.length) lastReceivedTs = data.messages[data.messages.length - 1].ts;
+    } else if (data.type === "message") {
+      const idleMs = Date.now() - lastReceivedTs;
+      renderMsg(data.message);
+      scrollBottom();
+      maybeNotify(idleMs);
+      lastReceivedTs = data.message.ts;
+    }
+  };
+
+  es.onerror = () => {
+    liveStatus.textContent = "Reconnecting…";
+    liveStatus.className = "status err";
+  };
+  es.onopen = () => {
+    liveStatus.textContent = "Connected";
+    liveStatus.className = "status ok";
+  };
+}
+
+function closeStream(){
+  if (es) { es.close(); es = null; }
+}
+
+document.querySelector("#composer").onsubmit = async (e) => {
+  e.preventDefault();
+  const input = $("#text");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  try{
+    const r = await fetch(API_BASE + "/send", {
+      method:"POST", headers:{ "content-type":"application/json" },
+      credentials:"include",
+      body: JSON.stringify({ text })
+    });
+    if (!r.ok) throw new Error(`Send failed (${r.status})`);
+  }catch(err){
+    alert("Failed to send. Check network/CORS.");
+  }
+};
+
+function renderMsg(m){
+  const el = document.createElement("div");
+  el.className = "msg";
+  const pfp = `<div class="pfp">${m.user.slice(0,1).toUpperCase()}</div>`;
+  const when = new Date(m.ts).toLocaleString();
+  el.innerHTML = `
+    ${pfp}
+    <div class="bubble">
+      <div class="meta">${escapeHTML(m.user)} • ${when}</div>
+      <div>${linkify(escapeHTML(m.text))}</div>
+    </div>
+  `;
+  msgsEl.appendChild(el);
+}
+function scrollBottom(){ msgsEl.scrollTop = msgsEl.scrollHeight; }
+
+function maybeNotify(idleMs){
+  if (!("Notification" in window)) return;
+  if (document.visibilityState === "visible") return;
+  if (Notification.permission !== "granted") return;
+  if (idleMs >= 5*60*1000) {
+    new Notification("New Message", { body: "There’s a new update in the console." });
+  }
+}
+
+/* small utils */
+function escapeHTML(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function linkify(s){ return s.replace(/https?:\/\/[^\s]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`); }
+
+/* Show a friendly hint if it looks like a CORS issue */
+function showCorsHint(err){
+  const isCors = (err && (""+err).includes("TypeError")) || location.protocol === "file:";
+  if (!isCors) return;
+  const t = document.createElement("div");
+  t.className = "notice";
+  t.style.marginTop = "10px";
+  t.textContent = "If you see CORS errors: host this file on HTTPS and allow its origin in your Worker (Access-Control-Allow-Origin + Credentials). 'file://' won’t work.";
+  document.querySelector("#authBox").appendChild(t);
+}
+</script>
+</body>
+</html>
